@@ -1,95 +1,44 @@
-provider "aws"{
-	region  = "${var.aws_region}"
-	profile = "${var.aws_profile}"
+provider "aws" {
+  region = "us-west-1"
+  access_key = "${var.AWS_ACCESS_KEY}"
+  secret_key = "${var.AWS_SECRET_KEY}"
 }
 
-#----------------IAM----------------------
-
-#S3_access
-
-resource "aws_iam_instance_profile" "s3_access_profile"{
-	name = "s3_access"
-	role = "${aws_iam_role.s3_access_role.name}"
+data "aws_security_group" "sec_group" {
+  id = "${var.security_group}"
 }
 
-resource "aws_iam_role_policy" "s3_access_policy" {
-	name = "s3_access_policy"
-	role = "${aws_iam_role.s3_access_role.id}"
+output "vpc_id" { value = "${data.aws_security_group.sec_group.vpc_id}"}
 
-	policy = <<EOF
-{
-	"Version": "2012-10-17",
-	"Statement": [
-		{
-			"Effect": "Allow",
-			"Action": "s3:*",
-			"Resource": "*"
-		}	
-		     ]
-}	
-EOF
+resource "aws_key_pair" "personal" {
+  key_name   = "North"
+  public_key = "${file("North.pem")}"
 }
 
-resource "aws_iam_role" "s3_access_role" {
-	name = "s3_access_role"
-	
-	assume_role_policy = <<EOF
-{
-	"Version": "2012-10-17",
-	"Statement": [
-			{
-				"Action": "sts:AssumeRole",
-				"Principal":{
-					"Service": "ec2.amazonaws.com"
-			},
-			"Effect": "Allow",
-			"Sid": ""
-                        }
-		]
-	}
-EOF
+data "aws_ami" "ubuntu" {
+  most_recent=true
+  filter{
+    name ="name"
+    values =["ubuntu/images/hvm-ssd/ubuntu-trusty-14.04-amd64-server-*"]
+  }
+  filter{
+    name = "virtualization-type"
+    values =["hvm"]
+  
+  }
+  owners =["099720109477" ]
+}
+
+resource "aws_instance" "web" {
+  ami ="${data.aws_ami.ubuntu.id}"
+  instance_type= "t2.micro"
+  key_name="Ncali"
+  security_groups=["${data.aws_security_group.sec_group.name}"]
+
+  tags{
+    Name = "helloworld"
+  }
 }
 
 
-#----------------VPC----------------------
 
-resource "aws_vpc" "wp_vpc" {
-	cidr_block = "${var.vpc_cidr}"
-	enable_dns_hostnames = true
-	enable_dns_support = true
-
-	tags{
-		Name = "wp_vpc"
-	}
-}
-
-#----------------Internet GW----------------------
-resource "aws_internet_gateway" "wp_internet_gateway"{
-	vpc.id = "${aws_vpc.wp_vpc.id}"
-
-	tags {
-		Name = "wp_igw"
-	}
-}
-
-#----------------Route Tables----------------------
-
-resource "aws_route_table" "wp_public_rt"{
-	vpc.id = "${aws_vpc.wp_vpc.id}"
-
-	route {
-		cidr_block = "0.0.0.0/0"
-		gateway_id = "${aws_internet_gateway.wp_internet_gateway.id}"
-	}
-
-	tags {
-		Name = "wp_public"
-	}
-}
-
-resource "aws_default_route_table" "wp_private_rt"{
-	default_route_table_id = "${aws_vpc.wp_vpc.default_route_table_id}"
-
-	tags {
-		Name = "wp_private"
-	}
